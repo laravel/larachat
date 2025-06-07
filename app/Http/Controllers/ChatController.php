@@ -199,19 +199,6 @@ class ChatController extends Controller
         ]);
     }
 
-    private function generateChatTitle(array $messages): string
-    {
-        $firstPrompt = collect($messages)
-            ->where('type', 'prompt')
-            ->first();
-
-        if ($firstPrompt) {
-            return substr($firstPrompt['content'], 0, 50).'...';
-        }
-
-        return 'New Chat';
-    }
-
     public function titleStream(Chat $chat)
     {
         $this->authorize('view', $chat);

@@ -1,6 +1,6 @@
 import StreamingIndicator from '@/components/streaming-indicator';
 import { cn } from '@/lib/utils';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Message = {
     id?: number;
@@ -20,11 +20,34 @@ export default function Conversation({ messages, streamingData, isStreaming, str
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom when messages change or during streaming
+    const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+
+    const checkIfAtBottom = useCallback(() => {
+        const container = scrollRef.current;
+        if (!container) return false;
+
+        const offset = Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight);
+        return offset <= 1; // Allow a small margin of error
+    }, []);
+
+    const handleScroll = useCallback(() => {
+        const nearBottom = checkIfAtBottom();
+        setShouldAutoScroll(nearBottom);
+    }, [checkIfAtBottom]);
+
     useEffect(() => {
-        if (scrollRef.current) {
+        if (scrollRef.current && shouldAutoScroll) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [messages.length, streamingData]);
+    }, [messages.length, streamingData, shouldAutoScroll]);
+
+    useEffect(() => {
+        const container = scrollRef.current;
+        if (container) {
+            container.addEventListener('scroll', handleScroll);
+            return () => container.removeEventListener('scroll', handleScroll);
+        }
+    }, [handleScroll]);
 
     return (
         <div ref={scrollRef} className="flex-1 overflow-x-hidden overflow-y-auto">

@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Chat\ChatRequest;
 use App\Models\Chat;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use OpenAI\Laravel\Facades\OpenAI;
 use Illuminate\Http\StreamedEvent;
@@ -42,13 +44,8 @@ class ChatController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(ChatRequest $request)
     {
-        $request->validate([
-            'title' => 'nullable|string|max:255',
-            'firstMessage' => 'nullable|string',
-        ]);
-
         $title = $request->title;
 
         // If no title provided, use "Untitled" initially
@@ -74,13 +71,9 @@ class ChatController extends Controller
         return redirect()->route('chat.show', $chat);
     }
 
-    public function update(Request $request, Chat $chat)
+    public function update(ChatRequest $request, Chat $chat)
     {
         $this->authorize('update', $chat);
-
-        $request->validate([
-            'title' => 'required|string|max:255',
-        ]);
 
         $chat->update([
             'title' => $request->title,
@@ -184,12 +177,12 @@ class ChatController extends Controller
                 ]);
 
                 // Generate title if this is a new chat with "Untitled" title
-                \Log::info('Checking if should generate title', ['chat_title' => $chat->title]);
+                Log::info('Checking if should generate title', ['chat_title' => $chat->title]);
                 if ($chat->title === 'Untitled') {
-                    \Log::info('Generating title in background for chat', ['chat_id' => $chat->id]);
+                    Log::info('Generating title in background for chat', ['chat_id' => $chat->id]);
                     $this->generateTitleInBackground($chat);
                 } else {
-                    \Log::info('Not generating title', ['current_title' => $chat->title]);
+                    Log::info('Not generating title', ['current_title' => $chat->title]);
                 }
             }
         }, 200, [
@@ -216,7 +209,7 @@ class ChatController extends Controller
     {
         $this->authorize('view', $chat);
 
-        \Log::info('Title stream requested for chat', ['chat_id' => $chat->id, 'title' => $chat->title]);
+        Log::info('Title stream requested for chat', ['chat_id' => $chat->id, 'title' => $chat->title]);
 
         return response()->eventStream(function () use ($chat) {
             // If title is already set and not "Untitled", send it immediately
@@ -295,13 +288,13 @@ class ChatController extends Controller
             // Update the chat title
             $chat->update(['title' => $generatedTitle]);
 
-            \Log::info('Generated title for chat', ['chat_id' => $chat->id, 'title' => $generatedTitle]);
+            Log::info('Generated title for chat', ['chat_id' => $chat->id, 'title' => $generatedTitle]);
 
         } catch (\Exception $e) {
             // Fallback title on error
             $fallbackTitle = substr($firstMessage->content, 0, 47) . '...';
             $chat->update(['title' => $fallbackTitle]);
-            \Log::error('Error generating title, using fallback', ['error' => $e->getMessage()]);
+            Log::error('Error generating title, using fallback', ['error' => $e->getMessage()]);
         }
     }
 }

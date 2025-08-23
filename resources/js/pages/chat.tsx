@@ -61,7 +61,10 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
 
         if (shouldAutoStream) {
             setTimeout(() => {
-                send({ messages: chat.messages });
+                const first = chat.messages[0];
+                if (first.type === 'prompt') {
+                    send({ prompt: first.content });
+                }
             }, 100);
         }
     }, [chat?.messages, flash?.stream, send]); // Only run on mount
@@ -128,10 +131,7 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
 
         // Send message data based on chat/auth status
         if (chat && auth.user) {
-            send({
-                messageType: 'prompt',
-                messageContent: query,
-            });
+            send({ prompt: query });
         } else {
             send({ messages: [...messages, ...toAdd] });
         }

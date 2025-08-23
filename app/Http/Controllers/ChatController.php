@@ -117,18 +117,17 @@ class ChatController extends Controller
 
         return response()->stream(function () use ($request, $chat) {
             $messages = collect($request->input('messages', []));
-            $messageType = $request->string('messageType', 'prompt');
-            $messageContent = $request->string('messageContent')->trim()->value();
+            $prompt = $request->string('prompt')->trim()->value();
 
-            if ($messages->isEmpty() && empty($messageContent)) {
+            if ($messages->isEmpty() && empty($prompt)) {
                 return;
             }
 
             // Only save/load messages if we have an existing chat (authenticated user with saved chat)
-            if ($chat && $messageContent && Auth::check()) {
+            if ($chat && $prompt && Auth::check()) {
                 $chat->messages()->create([
-                    'type' => $messageType,
-                    'content' => $messageContent,
+                    'type' => 'prompt',
+                    'content' => $prompt,
                 ]);
                 $messages = $chat->messages()->orderBy('created_at')->get();
             }

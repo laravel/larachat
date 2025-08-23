@@ -137,8 +137,7 @@ class ChatController extends Controller
             $openAIMessages = $messages->map(fn ($message) => [
                 'role' => $message['type'] === 'prompt' ? 'user' : 'assistant',
                 'content' => $message['content'],
-            ])
-            ->toArray();
+            ])->toArray();
 
             // Stream response from OpenAI
             $fullResponse = '';

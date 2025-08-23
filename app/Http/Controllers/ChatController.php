@@ -120,7 +120,7 @@ class ChatController extends Controller
             $prompt = $request->string('prompt')->trim()->value();
             $autoStream = $request->input('autoStream', false);
 
-            if ($messages->isEmpty() && empty($prompt)) {
+            if ($messages->isEmpty() && empty($prompt) && ! $autoStream) {
                 return;
             }
 

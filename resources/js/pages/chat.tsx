@@ -128,7 +128,10 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
 
         // Send message data based on chat/auth status
         if (chat && auth.user) {
-            send({ messageType: 'prompt', messageContent: query});
+            send({
+                messageType: 'prompt',
+                messageContent: query,
+            });
         } else {
             send({ messages: [...messages, ...toAdd] });
         }

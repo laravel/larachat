@@ -116,32 +116,25 @@ class ChatController extends Controller
         }
 
         return response()->stream(function () use ($request, $chat) {
-            $messages = $request->input('messages', []);
+            $messages = collect($request->input('messages', []));
+            $messageType = $request->string('messageType', 'prompt');
+            $messageContent = $request->string('messageContent')->trim()->value();
 
-            if (empty($messages)) {
-                return;
-            }
-
-            // Only save messages if we have an existing chat (authenticated user with saved chat)
-            if ($chat) {
-                foreach ($messages as $message) {
-                    // Only save if message doesn't have an ID (not from database)
-                    if (! isset($message['id'])) {
-                        $chat->messages()->create([
-                            'type' => $message['type'],
-                            'content' => $message['content'],
-                        ]);
-                    }
-                }
+            // Only save/load messages if we have an existing chat (authenticated user with saved chat)
+            if ($chat && $messageContent && Auth::check()) {
+                $chat->messages()->create([
+                    'type' => $messageType,
+                    'content' => $messageContent,
+                ]);
+                $messages = $chat->messages()->orderBy('created_at')->get();
             }
 
             // Prepare messages for OpenAI
-            $openAIMessages = collect($messages)
-                ->map(fn ($message) => [
-                    'role' => $message['type'] === 'prompt' ? 'user' : 'assistant',
-                    'content' => $message['content'],
-                ])
-                ->toArray();
+            $openAIMessages = $messages->map(fn ($message) => [
+                'role' => $message['type'] === 'prompt' ? 'user' : 'assistant',
+                'content' => $message['content'],
+            ])
+            ->toArray();
 
             // Stream response from OpenAI
             $fullResponse = '';

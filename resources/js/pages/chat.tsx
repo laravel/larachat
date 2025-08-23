@@ -126,8 +126,12 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
         // Update local state
         setMessages((prev) => [...prev, ...toAdd]);
 
-        // Send all messages including the new ones
-        send({ messages: [...messages, ...toAdd] });
+        // Send message data based on chat/auth status
+        if (chat && auth.user) {
+            send({ messageType: 'prompt', messageContent: query});
+        } else {
+            send({ messages: [...messages, ...toAdd] });
+        }
 
         input.value = '';
         inputRef.current?.focus();

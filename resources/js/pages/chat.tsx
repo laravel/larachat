@@ -63,7 +63,7 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
             setTimeout(() => {
                 const first = chat.messages[0];
                 if (first.type === 'prompt') {
-                    send({ prompt: first.content });
+                    send({ autoStream: 1 });
                 }
             }, 100);
         }

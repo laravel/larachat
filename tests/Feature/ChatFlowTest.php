@@ -64,9 +64,7 @@ class ChatFlowTest extends TestCase
 
         // Now send the message to the new chat
         $response = $this->post("/chat/{$chat->id}/stream", [
-            'messages' => [
-                ['type' => 'prompt', 'content' => 'Hello from home page'],
-            ],
+            'prompt' => 'Hello from home page',
         ]);
 
         $response->assertStatus(200);

@@ -170,20 +170,40 @@ function Chat() {
 On the Laravel side, create a streaming endpoint:
 
 ```php
-public function stream(Request $request)
-{
-    return response()->stream(function () use ($request) {
-        $messages = $request->input('messages', []);
-        
-        $latestPrompt = collect($messages)->last(fn ($message) => $message['type'] === 'prompt');
-        $historyMessages = collect($messages)->slice(0, -1)->map(fn ($message) => new \Laravel\Ai\Messages\Message(
-            $message['type'] === 'prompt' ? 'user' : 'assistant',
-            $message['content']
-        ))->all();
+private const AI_MODEL = 'gpt-4.1-nano';
 
-        // Stream response from Laravel AI SDK
-        $stream = agent(messages: $historyMessages)->stream(
+public function stream(Request $request, ?Chat $chat = null)
+{
+    if ($chat) {
+        $this->authorize('view', $chat);
+    }
+
+    return response()->stream(function () use ($request, $chat) {
+        $messages = $request->input('messages', []);
+
+        $latestPrompt = collect($messages)->last(fn ($message) => $message['type'] === 'prompt');
+        $historyMessages = collect($messages)->slice(0, -1)->map(
+            fn ($message) => new \Laravel\Ai\Messages\Message(
+                $message['type'] === 'prompt' ? 'user' : 'assistant',
+                $message['content']
+            )
+        )->all();
+
+        $assistant = \App\Ai\Agents\ChatAssistant::make();
+
+        if ($chat && $chat->user) {
+            if ($chat->ai_conversation_id) {
+                $assistant->continue($chat->ai_conversation_id, as: $chat->user);
+            } else {
+                $assistant->forUser($chat->user);
+            }
+        } else {
+            $assistant->withContextMessages($historyMessages);
+        }
+
+        $stream = $assistant->stream(
             prompt: $latestPrompt['content'],
+            model: self::AI_MODEL,
         );
 
         foreach ($stream as $event) {
@@ -203,7 +223,7 @@ public function stream(Request $request)
 
 ### Using the useEventStream Hook
 
-This demo showcases `useEventStream` for real-time updates. When you create a new chat, it initially shows "Untitled" but automatically generates a proper title using OpenAI and streams it back in real-time.
+This demo showcases `useEventStream` for real-time updates. When you create a new chat, it initially shows "Untitled" but automatically generates a proper title using the Laravel AI SDK and streams it back in real-time.
 
 #### Key Implementation Details
 
@@ -279,13 +299,12 @@ public function titleStream(Chat $chat)
             return;
         }
         
-        // Generate title using Laravel AI SDK
+        // Generate title using a dedicated Laravel AI SDK agent
         $firstMessage = $chat->messages()->where('type', 'prompt')->first();
 
-        $response = agent(
-            instructions: 'Generate a concise, descriptive title (max 50 characters) for a chat that starts with the following message. Respond with only the title, no quotes or extra formatting.'
-        )->prompt(
+        $response = \App\Ai\Agents\ChatTitleGenerator::make()->prompt(
             prompt: $firstMessage->content,
+            model: self::AI_MODEL,
         );
 
         $title = trim($response->text);

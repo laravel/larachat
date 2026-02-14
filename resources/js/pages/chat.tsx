@@ -19,6 +19,7 @@ type Message = {
 type ChatType = {
     id: number;
     title: string;
+    ai_conversation_id?: string | null;
     messages: Message[];
     created_at: string;
     updated_at: string;
@@ -55,9 +56,9 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
     useEffect(() => {
         inputRef.current?.focus();
 
-        // Auto-stream if we have a chat with exactly 1 message (newly created chat)
-        // OR if flash.stream is true (fallback)
-        const shouldAutoStream = chat?.messages?.length === 1 || (flash?.stream && chat?.messages && chat.messages.length > 0);
+        // Auto-stream only for truly new chats that have not been linked to an AI conversation yet.
+        const isNewUnlinkedChat = !!chat && !chat.ai_conversation_id && chat.messages?.length === 1;
+        const shouldAutoStream = isNewUnlinkedChat || (flash?.stream && chat?.messages && chat.messages.length > 0);
 
         if (shouldAutoStream) {
             setTimeout(() => {

@@ -17,6 +17,8 @@ class ChatController extends Controller
 {
     use AuthorizesRequests;
 
+    private const AI_MODEL = 'gpt-4.1-nano';
+
     public function index()
     {
         // For authenticated users, automatically create a new chat and redirect
@@ -166,7 +168,8 @@ class ChatController extends Controller
             } else {
                 try {
                     $stream = agent(messages: $historyMessages)->stream(
-                        prompt: $latestPrompt['content']
+                        prompt: $latestPrompt['content'],
+                        model: self::AI_MODEL,
                     );
 
                     foreach ($stream as $event) {
@@ -282,6 +285,7 @@ class ChatController extends Controller
                     instructions: 'Generate a concise, descriptive title (max 50 characters) for a chat that starts with the following message. Respond with only the title, no quotes or extra formatting.'
                 )->prompt(
                     prompt: $firstMessage->content,
+                    model: self::AI_MODEL,
                 );
 
                 $generatedTitle = trim($response->text);

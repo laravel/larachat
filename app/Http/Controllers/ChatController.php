@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Chat;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
+use Illuminate\Http\StreamedEvent;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
-use OpenAI\Laravel\Facades\OpenAI;
-use Illuminate\Http\StreamedEvent;
+use Laravel\Ai\Messages\Message as AiMessage;
+use Laravel\Ai\Streaming\Events\TextDelta;
+
+use function Laravel\Ai\agent;
 
 class ChatController extends Controller
 {
@@ -135,18 +138,26 @@ class ChatController extends Controller
                 }
             }
 
-            // Prepare messages for OpenAI
-            $openAIMessages = collect($messages)
-                ->map(fn ($message) => [
-                    'role' => $message['type'] === 'prompt' ? 'user' : 'assistant',
-                    'content' => $message['content'],
-                ])
-                ->toArray();
+            $latestPrompt = collect($messages)
+                ->last(fn (array $message) => ($message['type'] ?? null) === 'prompt');
 
-            // Stream response from OpenAI
+            if (! $latestPrompt || empty($latestPrompt['content'])) {
+                return;
+            }
+
+            $historyMessages = collect($messages)
+                ->take(max(count($messages) - 1, 0))
+                ->map(fn (array $message) => new AiMessage(
+                    $message['type'] === 'prompt' ? 'user' : 'assistant',
+                    $message['content']
+                ))
+                ->values()
+                ->all();
+
+            // Stream response from Laravel AI SDK
             $fullResponse = '';
 
-            if (app()->environment('testing') || ! config('openai.api_key')) {
+            if (app()->environment('testing') || ! $this->hasConfiguredDefaultProviderKey()) {
                 // Mock response for testing or when API key is not set
                 $fullResponse = 'This is a test response.';
                 echo $fullResponse;
@@ -154,16 +165,14 @@ class ChatController extends Controller
                 flush();
             } else {
                 try {
-                    $stream = OpenAI::chat()->createStreamed([
-                        'model' => 'gpt-4.1-nano',
-                        'messages' => $openAIMessages,
-                    ]);
+                    $stream = agent(messages: $historyMessages)->stream(
+                        prompt: $latestPrompt['content']
+                    );
 
-                    foreach ($stream as $response) {
-                        $chunk = $response->choices[0]->delta->content;
-                        if ($chunk !== null) {
-                            $fullResponse .= $chunk;
-                            echo $chunk;
+                    foreach ($stream as $event) {
+                        if ($event instanceof TextDelta && $event->delta !== '') {
+                            $fullResponse .= $event->delta;
+                            echo $event->delta;
                             ob_flush();
                             flush();
                         }
@@ -225,6 +234,7 @@ class ChatController extends Controller
                     event: 'title-update',
                     data: json_encode(['title' => $chat->title])
                 );
+
                 return;
             }
 
@@ -259,36 +269,26 @@ class ChatController extends Controller
         // Get the first message
         $firstMessage = $chat->messages()->where('type', 'prompt')->first();
 
-        if (!$firstMessage) {
+        if (! $firstMessage) {
             return;
         }
 
         try {
-            if (app()->environment('testing') || ! config('openai.api_key')) {
+            if (app()->environment('testing') || ! $this->hasConfiguredDefaultProviderKey()) {
                 // Mock response for testing
-                $generatedTitle = 'Chat about: ' . substr($firstMessage->content, 0, 30);
+                $generatedTitle = 'Chat about: '.substr($firstMessage->content, 0, 30);
             } else {
-                $response = OpenAI::chat()->create([
-                    'model' => 'gpt-4.1-nano',
-                    'messages' => [
-                        [
-                            'role' => 'system',
-                            'content' => 'Generate a concise, descriptive title (max 50 characters) for a chat that starts with the following message. Respond with only the title, no quotes or extra formatting.'
-                        ],
-                        [
-                            'role' => 'user',
-                            'content' => $firstMessage->content
-                        ]
-                    ],
-                    'max_tokens' => 20,
-                    'temperature' => 0.7,
-                ]);
+                $response = agent(
+                    instructions: 'Generate a concise, descriptive title (max 50 characters) for a chat that starts with the following message. Respond with only the title, no quotes or extra formatting.'
+                )->prompt(
+                    prompt: $firstMessage->content,
+                );
 
-                $generatedTitle = trim($response->choices[0]->message->content);
+                $generatedTitle = trim($response->text);
 
                 // Ensure title length
                 if (strlen($generatedTitle) > 50) {
-                    $generatedTitle = substr($generatedTitle, 0, 47) . '...';
+                    $generatedTitle = substr($generatedTitle, 0, 47).'...';
                 }
             }
 
@@ -299,9 +299,17 @@ class ChatController extends Controller
 
         } catch (\Exception $e) {
             // Fallback title on error
-            $fallbackTitle = substr($firstMessage->content, 0, 47) . '...';
+            $fallbackTitle = substr($firstMessage->content, 0, 47).'...';
             $chat->update(['title' => $fallbackTitle]);
             \Log::error('Error generating title, using fallback', ['error' => $e->getMessage()]);
         }
+    }
+
+    private function hasConfiguredDefaultProviderKey(): bool
+    {
+        $defaultProvider = (string) config('ai.default', 'openai');
+        $key = config("ai.providers.{$defaultProvider}.key");
+
+        return filled($key);
     }
 }

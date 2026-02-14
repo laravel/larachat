@@ -6,7 +6,7 @@ interface SidebarTitleUpdaterProps {
 }
 
 export default function SidebarTitleUpdater({ chatId, onComplete }: SidebarTitleUpdaterProps) {
-    const { message } = useEventStream(`/chat/${chatId}/title-stream`, {
+    useEventStream(`/chat/${chatId}/title-stream`, {
         eventName: "title-update",
         endSignal: "</stream>",
         onMessage: (event) => {

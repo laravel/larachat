@@ -11,9 +11,9 @@
     "require": {
         "php": "^8.2",
         "inertiajs/inertia-laravel": "^2.0",
+        "laravel/ai": "^0.1.5",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "openai-php/laravel": "^0.13.0",
         "tightenco/ziggy": "^2.4"
     },
     "require-dev": {

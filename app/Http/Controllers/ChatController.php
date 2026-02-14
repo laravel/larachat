@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Ai\Agents\ChatAssistant;
+use App\Ai\Agents\ChatTitleGenerator;
 use App\Models\Chat;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -9,9 +11,8 @@ use Illuminate\Http\StreamedEvent;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Laravel\Ai\Messages\Message as AiMessage;
+use Laravel\Ai\Responses\StreamedAgentResponse;
 use Laravel\Ai\Streaming\Events\TextDelta;
-
-use function Laravel\Ai\agent;
 
 class ChatController extends Controller
 {
@@ -167,10 +168,32 @@ class ChatController extends Controller
                 flush();
             } else {
                 try {
-                    $stream = agent(messages: $historyMessages)->stream(
+                    $assistant = ChatAssistant::make();
+
+                    if ($chat && $chat->user) {
+                        if ($chat->ai_conversation_id) {
+                            $assistant->continue($chat->ai_conversation_id, as: $chat->user);
+                        } else {
+                            $assistant->forUser($chat->user);
+                        }
+                    } else {
+                        $assistant->withContextMessages($historyMessages);
+                    }
+
+                    $stream = $assistant->stream(
                         prompt: $latestPrompt['content'],
                         model: self::AI_MODEL,
-                    );
+                    )->then(function (StreamedAgentResponse $response) use ($chat): void {
+                        if (! $chat || ! $response->conversationId) {
+                            return;
+                        }
+
+                        if ($chat->ai_conversation_id === $response->conversationId) {
+                            return;
+                        }
+
+                        $chat->update(['ai_conversation_id' => $response->conversationId]);
+                    });
 
                     foreach ($stream as $event) {
                         if ($event instanceof TextDelta && $event->delta !== '') {
@@ -281,9 +304,7 @@ class ChatController extends Controller
                 // Mock response for testing
                 $generatedTitle = 'Chat about: '.substr($firstMessage->content, 0, 30);
             } else {
-                $response = agent(
-                    instructions: 'Generate a concise, descriptive title (max 50 characters) for a chat that starts with the following message. Respond with only the title, no quotes or extra formatting.'
-                )->prompt(
+                $response = ChatTitleGenerator::make()->prompt(
                     prompt: $firstMessage->content,
                     model: self::AI_MODEL,
                 );

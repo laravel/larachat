@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { useStream } from '@laravel/stream-react';
 import { Info } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
@@ -19,6 +19,7 @@ type Message = {
 type ChatType = {
     id: number;
     title: string;
+    ai_conversation_id?: string | null;
     messages: Message[];
     created_at: string;
     updated_at: string;
@@ -49,22 +50,22 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
     const currentChatId = chat?.id || null;
     const streamUrl = currentChatId ? `/chat/${currentChatId}/stream` : '/chat/stream';
 
-    const { data, send, isStreaming, isFetching, cancel, id } = useStream(streamUrl);
+    const { data, send, isStreaming, isFetching, id } = useStream(streamUrl);
 
     // Auto-focus input and handle auto-streaming on mount
     useEffect(() => {
         inputRef.current?.focus();
 
-        // Auto-stream if we have a chat with exactly 1 message (newly created chat)
-        // OR if flash.stream is true (fallback)
-        const shouldAutoStream = chat?.messages?.length === 1 || (flash?.stream && chat?.messages && chat.messages.length > 0);
+        // Auto-stream only for truly new chats that have not been linked to an AI conversation yet.
+        const isNewUnlinkedChat = !!chat && !chat.ai_conversation_id && chat.messages?.length === 1;
+        const shouldAutoStream = isNewUnlinkedChat || (flash?.stream && chat?.messages && chat.messages.length > 0);
 
         if (shouldAutoStream) {
             setTimeout(() => {
                 send({ messages: chat.messages });
             }, 100);
         }
-    }, [chat?.messages, flash?.stream, send]); // Only run on mount
+    }, [chat, flash?.stream, send]); // Only run on mount
 
     // Scroll to bottom when streaming
     useEffect(() => {
@@ -194,7 +195,7 @@ function ChatWithStream({ chat, auth, flash }: { chat: ChatType | undefined; aut
                     </div>
                 )}
 
-                <Conversation messages={messages} streamingData={data} isStreaming={isStreaming} streamId={id} />
+                <Conversation messages={messages} streamingData={data} streamId={id} />
 
                 <div className="bg-background flex-shrink-0 border-t">
                     <div className="mx-auto max-w-3xl p-4">

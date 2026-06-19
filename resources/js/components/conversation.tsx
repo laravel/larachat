@@ -12,11 +12,10 @@ type Message = {
 interface ConversationProps {
     messages: Message[];
     streamingData?: string;
-    isStreaming: boolean;
     streamId?: string;
 }
 
-export default function Conversation({ messages, streamingData, isStreaming, streamId }: ConversationProps) {
+export default function Conversation({ messages, streamingData, streamId }: ConversationProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom when messages change or during streaming

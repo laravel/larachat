@@ -33,7 +33,7 @@ Before getting started, ensure your system meets these requirements:
 - **Git** (for cloning the repository)
 
 ### Optional but Recommended
-- **OpenAI API Key** (for AI responses - the app works without it but uses mock responses)
+- **OpenAI API Key** (used via Laravel AI SDK for AI responses; the app still works without it using mock responses)
 - **PHP development server** or **Laravel Valet** for local development
 
 ### Framework Versions Used
@@ -60,7 +60,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-3. Configure your OpenAI API key in `.env`:
+3. Configure your provider key in `.env` (Laravel AI SDK defaults to OpenAI):
 
 ```env
 OPENAI_API_KEY=your-api-key-here
@@ -93,7 +93,7 @@ composer dev
 - Ensure you have Node.js 22+ installed
 - Use `nvm` to manage Node.js versions: `nvm install 22 && nvm use 22`
 
-**"Class 'OpenAI' not found" error:**
+**"Laravel AI SDK classes not found" error:**
 - Run `composer install` to ensure all PHP dependencies are installed
 - Check that your `OPENAI_API_KEY` is set in `.env` (or leave it empty for mock responses)
 
@@ -170,21 +170,45 @@ function Chat() {
 On the Laravel side, create a streaming endpoint:
 
 ```php
-public function stream(Request $request)
-{
-    return response()->stream(function () use ($request) {
-        $messages = $request->input('messages', []);
-        
-        // Stream response from OpenAI
-        $stream = OpenAI::chat()->createStreamed([
-            'model' => 'gpt-4',
-            'messages' => $messages,
-        ]);
+private const AI_MODEL = 'gpt-4.1-nano';
 
-        foreach ($stream as $response) {
-            $chunk = $response->choices[0]->delta->content;
-            if ($chunk !== null) {
-                echo $chunk;
+public function stream(Request $request, ?Chat $chat = null)
+{
+    if ($chat) {
+        $this->authorize('view', $chat);
+    }
+
+    return response()->stream(function () use ($request, $chat) {
+        $messages = $request->input('messages', []);
+
+        $latestPrompt = collect($messages)->last(fn ($message) => $message['type'] === 'prompt');
+        $historyMessages = collect($messages)->slice(0, -1)->map(
+            fn ($message) => new \Laravel\Ai\Messages\Message(
+                $message['type'] === 'prompt' ? 'user' : 'assistant',
+                $message['content']
+            )
+        )->all();
+
+        $assistant = \App\Ai\Agents\ChatAssistant::make();
+
+        if ($chat && $chat->user) {
+            if ($chat->ai_conversation_id) {
+                $assistant->continue($chat->ai_conversation_id, as: $chat->user);
+            } else {
+                $assistant->forUser($chat->user);
+            }
+        } else {
+            $assistant->withContextMessages($historyMessages);
+        }
+
+        $stream = $assistant->stream(
+            prompt: $latestPrompt['content'],
+            model: self::AI_MODEL,
+        );
+
+        foreach ($stream as $event) {
+            if ($event instanceof \Laravel\Ai\Streaming\Events\TextDelta) {
+                echo $event->delta;
                 ob_flush();
                 flush();
             }
@@ -199,7 +223,7 @@ public function stream(Request $request)
 
 ### Using the useEventStream Hook
 
-This demo showcases `useEventStream` for real-time updates. When you create a new chat, it initially shows "Untitled" but automatically generates a proper title using OpenAI and streams it back in real-time.
+This demo showcases `useEventStream` for real-time updates. When you create a new chat, it initially shows "Untitled" but automatically generates a proper title using the Laravel AI SDK and streams it back in real-time.
 
 #### Key Implementation Details
 
@@ -275,23 +299,15 @@ public function titleStream(Chat $chat)
             return;
         }
         
-        // Generate title using OpenAI
+        // Generate title using a dedicated Laravel AI SDK agent
         $firstMessage = $chat->messages()->where('type', 'prompt')->first();
-        
-        $response = OpenAI::chat()->create([
-            'model' => 'gpt-4o-mini',
-            'messages' => [
-                [
-                    'role' => 'system', 
-                    'content' => 'Generate a concise, descriptive title (max 50 characters) for a chat that starts with the following message. Respond with only the title, no quotes or extra formatting.'
-                ],
-                ['role' => 'user', 'content' => $firstMessage->content]
-            ],
-            'max_tokens' => 20,
-            'temperature' => 0.7,
-        ]);
 
-        $title = trim($response->choices[0]->message->content);
+        $response = \App\Ai\Agents\ChatTitleGenerator::make()->prompt(
+            prompt: $firstMessage->content,
+            model: self::AI_MODEL,
+        );
+
+        $title = trim($response->text);
         $chat->update(['title' => $title]);
 
         // Stream the new title
@@ -317,7 +333,7 @@ Route::middleware('auth')->group(function () {
 
 1. **User sends first message** → AI response streams back via `useStream`
 2. **Response completes** → Triggers EventStream for title generation  
-3. **Server generates title** → Uses OpenAI to create descriptive title
+3. **Server generates title** → Uses Laravel AI SDK to create descriptive title
 4. **EventStream sends update** → Both conversation header and sidebar update in real-time
 5. **Components unmount** → Clean up after receiving title
 
@@ -390,7 +406,7 @@ This separation actually gives you more flexibility - you can have both traditio
 - [Prism by Echo Labs](https://prism.echolabs.dev/) - Alternative Laravel package for AI integration (supports multiple providers)
 - [Laravel Stream Documentation](https://github.com/laravel/stream)
 - [Server-Sent Events in Laravel](https://laravel.com/docs/responses#event-streams)
-- [OpenAI PHP Client](https://github.com/openai-php/client) - Used in this demo for OpenAI integration
+- [Laravel AI SDK Documentation](https://laravel.com/docs/12.x/ai-sdk) - Unified AI integration used in this demo
 
 ## License
 

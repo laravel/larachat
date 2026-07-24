@@ -154,6 +154,8 @@ class ChatController extends Controller
                 flush();
             } else {
                 try {
+                    // Prevent reply time from being too long to cause timeout errors
+                    set_time_limit(0);
                     $stream = OpenAI::chat()->createStreamed([
                         'model' => 'gpt-4.1-nano',
                         'messages' => $openAIMessages,
